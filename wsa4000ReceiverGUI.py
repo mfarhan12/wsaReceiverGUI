@@ -1,6 +1,6 @@
 import sys
 from PySide import QtGui
-from pyrf.receiverGUI.gui import MainWindow
+from gui import MainWindow
 
 import qt4reactor
 

@@ -1,13 +1,13 @@
 
 import sys
 import socket
-from PySide import QtGui
+from PySide import QtGui, QtCore
 from util import frequency_text
 from pyrf.devices.thinkrf import WSA4000
 
 # define constants
 MIN_FREQ = 0
-MAX_FREQ = 10e9
+MAX_FREQ = 8e9
 MHZ = 1e6
 CONNECTED_STATE = 'CONNECTED'
 DEMO_STATE = 'DEMO'
@@ -52,6 +52,8 @@ class MainWindow(QtGui.QMainWindow):
         fileMenu.addAction(exitAction)
         self.setWindowTitle('PyRF Receiver Controller')
         self.state = None
+        self.setMaximumHeight(20)
+        self.setMaximumWidth(20)
     # connect to device after GUI loaded
     def open_device_dialog(self):
 
@@ -65,16 +67,16 @@ class MainWindow(QtGui.QMainWindow):
                 
             if not ok and self.state == DEMO_STATE:
                 QtGui.QMessageBox.information(self, 'Connection Error', 
-                'Failed to connect to WSA4000, Initiating demo mode')
-                self.setWindowTitle('WSA4000 Receiver Controller (Demo Mode)')
+                'Failed to connect to WSA5000, Initiating demo mode')
+                self.setWindowTitle('WSA5000 Receiver Controller (Demo Mode)')
                 self.setCentralWidget(MainPanel(None,self.state))
                 return
             
             self.open_device(name)
             if self.state == DEMO_STATE:
-                self.setWindowTitle('WSA4000 Receiver Controller (Demo Mode)')
+                self.setWindowTitle('WSA5000 Receiver Controller (Demo Mode)')
             elif self.state == CONNECTED_STATE:
-                self.setWindowTitle('WSA4000 Receiver Controller')
+                self.setWindowTitle('WSA5000 Receiver Controller')
             self.setCentralWidget(MainPanel(self.dut,self.state))
             return
 
@@ -90,7 +92,7 @@ class MainWindow(QtGui.QMainWindow):
             self.state = CONNECTED_STATE
         except socket.error:
                 QtGui.QMessageBox.information(self, 'Connection Error', 
-                'Failed to connect to WSA4000, Initiating demo mode')
+                'Failed to connect to WSA5000, Initiating demo mode')
                 self.state = DEMO_STATE
         return
 
@@ -109,19 +111,18 @@ class MainPanel(QtGui.QWidget):
         self.state = state
         self.center_freq = None
         self.initUI()
-
+        if self.state == CONNECTED_STATE:
+            self.dut.scpiset('OUTPUT:IQ:MODE DIGITIZER')
     def initUI(self):
         grid = QtGui.QGridLayout()
         grid.setSpacing(10)
         grid.setColumnMinimumWidth(0,4)
         
         y = 0
-        grid.addWidget(self._antenna_control(), y, 1, 1, 2)
-        grid.addWidget(self._bpf_control(), y, 3, 1, 2)
-        y += 1
-        grid.addWidget(self._gain_control(), y, 1, 1, 2)
-        grid.addWidget(QtGui.QLabel('IF Gain:'), y, 3, 1, 1)
-        grid.addWidget(self._ifgain_control(), y, 4, 1, 1)
+
+        grid.addWidget(self._atten_controls(),y, 1, 1, 1)
+        grid.addWidget(QtGui.QLabel('IQ Path:'), y, 2, 1, 1)
+        grid.addWidget(self._iq_controls(),y, 3, 1, 1)
         y += 1
         freq, steps, freq_plus, freq_minus = self._freq_controls()
         grid.addWidget(QtGui.QLabel('Center Freq:'), y, 1, 1, 1)
@@ -134,90 +135,23 @@ class MainPanel(QtGui.QWidget):
 
         self.setLayout(grid)
         self.show()
-     
-    @inlineCallbacks
-    def _read_update_antenna_box(self):
-        if self.state == CONNECTED_STATE:
-            ant = yield self.dut.antenna()
-        elif self.state == DEMO_STATE:
-            ant = 1
-        self._antenna_box.setCurrentIndex(ant - 1)
-
-    def _antenna_control(self):
-        antenna = QtGui.QComboBox(self)
-        antenna.addItem("Antenna 1")
-        antenna.addItem("Antenna 2")
-        self._antenna_box = antenna
-        self._read_update_antenna_box()
-        def new_antenna():
-            if self.state == CONNECTED_STATE:
-                self.dut.antenna(int(antenna.currentText().split()[-1]))
-        antenna.currentIndexChanged.connect(new_antenna)
-        return antenna
-
-    @inlineCallbacks
-    def _read_update_bpf_box(self):
-        if self.state == CONNECTED_STATE: 
-            bpf = yield self.dut.preselect_filter()
-        elif self.state == DEMO_STATE:
-            bpf = 1
-        self._bpf_box.setCurrentIndex(0 if bpf else 1)
     
-    def _bpf_control(self):
-        bpf = QtGui.QComboBox(self)
-        bpf.addItem("BPF On")
-        bpf.addItem("BPF Off")
-        self._bpf_box = bpf
-        self._read_update_bpf_box()
-        def new_bpf():
-            if self.state == CONNECTED_STATE: 
-                self.dut.preselect_filter("On" in bpf.currentText())
-        bpf.currentIndexChanged.connect(new_bpf)
-        return bpf
+    def _atten_controls(self):
+        atten = QtGui.QCheckBox('Attenuation')
+        atten.setChecked(True)
+        self._atten = atten
+        atten.clicked.connect(lambda: self.update_wsa_settings())
+        return atten
+    
+    def _iq_controls(self):
+        iq = QtGui.QComboBox(self)
+        iq.addItem("WSA Digitizer")
+        iq.addItem("External Digitizer")
+        self._iq_box = iq
+
+        iq.currentIndexChanged.connect(lambda: self.update_wsa_settings())
+        return iq
         
-
-    def _read_update_gain_box(self):
-        if self.state == CONNECTED_STATE:
-            gain = self.dut.gain()
-        elif self.state == DEMO_STATE:
-            gain = 'high'
-        self._gain_box.setCurrentIndex(self._gain_values.index(gain))
-
-    def _gain_control(self):
-        gain = QtGui.QComboBox(self)
-        gain_values = ['High', 'Med', 'Low', 'VLow']
-        for g in gain_values:
-            gain.addItem("RF Gain: %s" % g)
-        self._gain_values = [g.lower() for g in gain_values]
-        self._gain_box = gain
-        self._read_update_gain_box()
-        def new_gain():
-            if self.state == CONNECTED_STATE:
-                g = gain.currentText().split()[-1].lower().encode('ascii')
-                self.dut.gain(g)
-        gain.currentIndexChanged.connect(new_gain)
-        return gain
-
-    @inlineCallbacks
-    def _read_update_ifgain_box(self):
-        if self.state == CONNECTED_STATE:
-            ifgain = yield self.dut.ifgain()
-        elif self.state == DEMO_STATE:
-            ifgain = 0
-        self._ifgain_box.setValue(int(ifgain))
-
-    def _ifgain_control(self):
-        ifgain = QtGui.QSpinBox(self)
-        ifgain.setRange(-10, 25)
-        ifgain.setSuffix(" dB")
-        self._ifgain_box = ifgain
-        self._read_update_ifgain_box()
-        def new_ifgain():
-            if self.state == CONNECTED_STATE:
-                self.dut.ifgain(ifgain.value())
-        ifgain.valueChanged.connect(new_ifgain)
-        return ifgain
-
     @inlineCallbacks
     def _read_update_freq_edit(self):
         "Get current frequency from self.dut and update the edit box"
@@ -270,18 +204,19 @@ class MainPanel(QtGui.QWidget):
         return freq, steps, freq_plus, freq_minus
     
     def update_wsa_settings(self):
+
         if self.state == CONNECTED_STATE:
-               
-            # update antenna port
-            self.dut.antenna(int(self._antenna_box.currentText().split()[-1]))
+            if self._atten.checkState() == QtCore.Qt.CheckState.Unchecked:
+                self.dut.scpiset(':INPUT:ATTENUATOR 0')
+            else:
+                self.dut.scpiset(':INPUT:ATTENUATOR 1')
+                
+            if self._iq_box.currentIndex() == 0:
+                self.dut.scpiset('OUTPUT:IQ:MODE DIGITIZER')
+            else:
+                self.dut.scpiset('OUTPUT:IQ:MODE CONNECTOR')
+           
 
-            # update bpf status
-            self.dut.preselect_filter("On" in self._bpf_box.currentText())
-
-            # update rf gain setting
-            g = self._gain_box.currentText().split()[-1].lower().encode('ascii')
-            self.dut.gain(g)
-        return
         
     def set_freq_mhz(self, f):
         center_freq = f * MHZ
