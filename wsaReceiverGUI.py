@@ -2,6 +2,8 @@ import sys
 from PySide import QtGui
 from gui import MainWindow
 
+# pyinstaller + qt4reactor workaround:
+sys.modules.pop('twisted.internet.reactor', None)
 import qt4reactor
 
 def main():
