@@ -11,6 +11,7 @@ MAX_FREQ = 8e9
 MHZ = 1e6
 CONNECTED_STATE = 'CONNECTED'
 DEMO_STATE = 'DEMO'
+RFE_MODES = ['ZIF', 'SH', 'HDR']
 try:
     from twisted.internet.defer import inlineCallbacks
 except ImportError:
@@ -112,7 +113,7 @@ class MainPanel(QtGui.QWidget):
         self.center_freq = None
         self.initUI()
         if self.state == CONNECTED_STATE:
-            self.dut.scpiset('OUTPUT:IQ:MODE DIGITIZER')
+            self.dut.reset()
     def initUI(self):
         grid = QtGui.QGridLayout()
         grid.setSpacing(10)
@@ -123,6 +124,8 @@ class MainPanel(QtGui.QWidget):
         grid.addWidget(self._atten_controls(),y, 1, 1, 1)
         grid.addWidget(QtGui.QLabel('IQ Path:'), y, 2, 1, 1)
         grid.addWidget(self._iq_controls(),y, 3, 1, 1)
+        grid.addWidget(QtGui.QLabel('RFE Mode:'),y, 4, 1, 1)
+        grid.addWidget(self._rfe_controls(),y, 5, 1, 1)
         y += 1
         freq, steps, freq_plus, freq_minus = self._freq_controls()
         grid.addWidget(QtGui.QLabel('Center Freq:'), y, 1, 1, 1)
@@ -151,6 +154,18 @@ class MainPanel(QtGui.QWidget):
 
         iq.currentIndexChanged.connect(lambda: self.update_wsa_settings())
         return iq
+        
+    def _rfe_controls(self):
+        rfe = QtGui.QComboBox(self)
+        for mode in RFE_MODES:
+            rfe.addItem(mode)
+
+        self._rfe_box = rfe
+        rfe.currentIndexChanged.connect(lambda: self.update_wsa_settings())
+        return rfe
+
+        
+
         
     @inlineCallbacks
     def _read_update_freq_edit(self):
@@ -215,8 +230,9 @@ class MainPanel(QtGui.QWidget):
                 self.dut.scpiset('OUTPUT:IQ:MODE DIGITIZER')
             else:
                 self.dut.scpiset('OUTPUT:IQ:MODE CONNECTOR')
-           
-
+       
+        rfe_mode = self._rfe_box.currentText()
+        self.dut.scpiset('INPUT:MODE: ' + rfe_mode)
         
     def set_freq_mhz(self, f):
         center_freq = f * MHZ
