@@ -235,6 +235,11 @@ class MainPanel(QtGui.QWidget):
         self.dut.scpiset('INPUT:MODE: ' + rfe_mode)
         
     def set_freq_mhz(self, f):
+        prop = self.dut.properties
+        rfe_mode = self._rfe_box.currentText()
+        MIN_FREQ = prop.MIN_TUNABLE[rfe_mode]
+        MAX_FREQ = prop.MAX_TUNABLE[rfe_mode]
+        
         center_freq = f * MHZ
         if center_freq > MAX_FREQ or center_freq < MIN_FREQ:          
             self._freq_edit.setText(str((self.center_freq/MHZ)))
