@@ -11,7 +11,8 @@ MAX_FREQ = 8e9
 MHZ = 1e6
 CONNECTED_STATE = 'CONNECTED'
 DEMO_STATE = 'DEMO'
-RFE_MODES = ['ZIF', 'SH', 'HDR']
+RFE_MODES = ['ZIF', 'SH', 'HDR', 'IQIN']
+
 try:
     from twisted.internet.defer import inlineCallbacks
 except ImportError:
